@@ -1,6 +1,6 @@
 # UFW Lab demo
 
-Based on the topics of *UFW Essentials: Common Firewall Rules and Commands* (DigitalOcean):
+Based on the topics of *UFW Essentials: Common Firewall Rules and Commands* [(DigitalOcean)](https://www.digitalocean.com/community/tutorials/ufw-essentials-common-firewall-rules-and-commands):
 status/enabling, default policies, blocking IPs, per-interface rules, SSH (also from specific IPs/subnets),
 HTTP/HTTPS, rsync, MySQL/PostgreSQL, outgoing SMTP, port ranges, application profiles,
 deleting rules, reset.
