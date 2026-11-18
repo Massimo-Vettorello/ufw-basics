@@ -1,165 +1,165 @@
-# Laboratorio UFW (demo per studenti)
+# UFW Lab demo
 
-Basato sui temi di *UFW Essentials: Common Firewall Rules and Commands* (DigitalOcean):
-stato/abilitazione, policy di default, blocco IP, regole per interfaccia, SSH (anche da IP/subnet),
-HTTP/HTTPS, rsync, MySQL/PostgreSQL, SMTP in uscita, range di porte, profili applicativi,
-eliminazione regole, reset.
+Based on the topics of *UFW Essentials: Common Firewall Rules and Commands* (DigitalOcean):
+status/enabling, default policies, blocking IPs, per-interface rules, SSH (also from specific IPs/subnets),
+HTTP/HTTPS, rsync, MySQL/PostgreSQL, outgoing SMTP, port ranges, application profiles,
+deleting rules, reset.
 
-## Topologia
+## Topology
 
-| Container   | IP            | Ruolo                                                       |
+| Container   | IP            | Role                                                        |
 |-------------|---------------|-------------------------------------------------------------|
-| ufw-server  | 172.29.0.10   | Server con UFW: SSH 22, HTTP 80, HTTPS 443, rsync 873, MySQL 3306, PostgreSQL 5432, 6000-6001 |
-| ufw-client1 | 172.29.0.21   | Client 1 ("studente buono")                                 |
-| ufw-client2 | 172.29.0.22   | Client 2 ("attaccante": da bloccare)                        |
+| ufw-server  | 172.29.0.10   | Server with UFW: SSH 22, HTTP 80, HTTPS 443, rsync 873, MySQL 3306, PostgreSQL 5432, 6000-6001 |
+| ufw-client1 | 172.29.0.21   | Client 1 ("good student")                                   |
+| ufw-client2 | 172.29.0.22   | Client 2 ("attacker": to be blocked)                        |
 
-Rete isolata `172.29.0.0/24`, diversa dal lab iptables (`172.28.0.0/24`): i due laboratori possono girare insieme.
-UFW lavora solo nel network namespace del container server: **il tuo host non viene toccato**.
+Isolated network `172.29.0.0/24`, different from the iptables lab (`172.28.0.0/24`): both labs can run at the same time.
+UFW works only inside the server container's network namespace: **your host is not touched**.
 
-## Avvio
+## Getting started
 
 ```bash
 docker compose up -d --build
-docker exec -it ufw-server  bash   # terminale A (server)
-docker exec -it ufw-client1 bash   # terminale B (client 1)
-docker exec -it ufw-client2 bash   # terminale C (client 2)
+docker exec -it ufw-server  bash   # terminal A (server)
+docker exec -it ufw-client1 bash   # terminal B (client 1)
+docker exec -it ufw-client2 bash   # terminal C (client 2)
 ```
 
-Comandi utili:
-- server: `lab-show` (regole UFW + catena iptables generata), `lab-reset` (UFW disattivato, nessuna regola)
-- client: `check` (tabella OPEN / REFUSED / TIMEOUT)
+Handy commands:
+- server: `lab-show` (UFW rules + the generated iptables chain), `lab-reset` (UFW disabled, no rules)
+- client: `check` (OPEN / REFUSED / TIMEOUT table)
 
-Spegnere tutto: `docker compose down`.
+Shut everything down: `docker compose down`.
 
-## Scaletta della demo
+## Demo outline
 
-**0. Stato iniziale** – (server) `ufw status` → `Status: inactive`. (client1) `check` → tutto OPEN.
+**0. Initial state** – (server) `ufw status` → `Status: inactive`. (client1) `check` → everything OPEN.
 
-**1. Policy di default e abilitazione** *(lockout!)*
+**1. Default policies and enabling** *(lockout!)*
 ```bash
 ufw default deny incoming
 ufw default allow outgoing
-ufw enable                 # confermare con y
+ufw enable                 # confirm with y
 ufw status verbose
 ```
-`check` da client1 → tutto TIMEOUT, **tranne il ping**: UFW per default accetta ICMP in `/etc/ufw/before.rules`.
-Provare `ssh root@172.29.0.10` (password `student`) → si blocca: senza regola SSH, in un server reale ci si chiude fuori.
-> Messaggio: *prima* `ufw allow ssh`, *poi* `ufw enable`. Qui possiamo rientrare con `docker exec`.
+`check` from client1 → everything TIMEOUT, **except ping**: by default UFW accepts ICMP in `/etc/ufw/before.rules`.
+Try `ssh root@172.29.0.10` (password `student`) → it hangs: without an SSH rule, on a real server you would lock yourself out.
+> Message: `ufw allow ssh` *first*, `ufw enable` *after*. Here we can get back in with `docker exec`.
 
 **2. SSH**
 ```bash
-ufw allow ssh              # oppure: ufw allow 22
+ufw allow ssh              # or: ufw allow 22
 ```
-`check` → SSH OPEN. Provare il login SSH da client1.
+`check` → SSH OPEN. Try the SSH login from client1.
 
-**3. HTTP e HTTPS (anche per nome servizio e porte multiple)**
+**3. HTTP and HTTPS (by service name and multiple ports)**
 ```bash
 ufw allow http
 ufw allow 443/tcp
-# alternativa multi-porta:  ufw allow proto tcp from any to any port 80,443
+# multi-port alternative:  ufw allow proto tcp from any to any port 80,443
 ```
-`curl http://172.29.0.10` da client1.
+`curl http://172.29.0.10` from client1.
 
-**4. SSH solo da IP o subnet** (sostituiamo la regola generica)
+**4. SSH from a specific IP or subnet only** (we replace the generic rule)
 ```bash
 ufw status numbered
-ufw delete <numero della regola 22>
+ufw delete <number of the port 22 rule>
 ufw allow from 172.29.0.21 to any port 22 proto tcp
 ```
-client1: SSH ok; client2: SSH in timeout. Variante: `ufw allow from 172.29.0.0/24 to any port 22 proto tcp`.
+client1: SSH works; client2: SSH times out. Variant: `ufw allow from 172.29.0.0/24 to any port 22 proto tcp`.
 
-**5. MySQL e PostgreSQL da un IP specifico**
+**5. MySQL and PostgreSQL from a specific IP**
 ```bash
 ufw allow from 172.29.0.21 to any port 3306 proto tcp
 ufw allow from 172.29.0.21 to any port 5432 proto tcp
 ```
-`nc -v 172.29.0.10 3306` → banner da client1, timeout da client2.
+`nc -v 172.29.0.10 3306` → banner from client1, timeout from client2.
 
-**6. rsync (873) da un IP o una subnet**
+**6. rsync (873) from an IP or subnet**
 ```bash
 ufw allow from 172.29.0.0/24 to any port 873 proto tcp
 ```
 
-**7. Range di porte**
+**7. Port ranges**
 ```bash
-ufw allow 6000:6007/tcp     # il range richiede sempre il protocollo
+ufw allow 6000:6007/tcp     # a range always requires the protocol
 ```
-`check` → 6000 e 6001 OPEN.
+`check` → 6000 and 6001 OPEN.
 
-**8. Bloccare un indirizzo IP**
+**8. Block an IP address**
 ```bash
 ufw deny from 172.29.0.22
 ```
-Attenzione all'**ordine**: UFW valuta dall'alto, vince la prima regola che combacia.
-Se client2 è già coperto da una `allow from 172.29.0.0/24`, il deny in fondo non basta:
+Watch the **order**: UFW evaluates from the top, the first matching rule wins.
+If client2 is already covered by an `allow from 172.29.0.0/24`, a deny at the bottom is not enough:
 ```bash
 ufw insert 1 deny from 172.29.0.22
 ufw status numbered
 ```
 
-**9. Bloccare su una specifica interfaccia**
+**9. Block on a specific interface**
 ```bash
 ufw deny in on eth0 from 172.29.0.22
 ```
-Spiegare che `in on <interfaccia>` si può aggiungere a qualsiasi regola (utile con più schede di rete).
+Explain that `in on <interface>` can be added to any rule (useful with multiple network cards).
 
 **10. DENY vs REJECT**
 ```bash
-ufw reject 5432/tcp         # prima eliminare l'eventuale allow su 5432
+ufw reject 5432/tcp         # first remove any allow rule on 5432
 ```
-`check` → 5432 "REFUSED" (immediato), le altre bloccate in "TIMEOUT".
+`check` → 5432 "REFUSED" (immediate), the other blocked ports show "TIMEOUT".
 
-**11. Traffico in uscita: bloccare SMTP**
+**11. Outgoing traffic: block SMTP**
 ```bash
 # client1:   nc -l -p 25
 ufw deny out 25
 # server:    nc -zv -w2 172.29.0.21 25   → timeout
 ```
-Eliminare con `ufw delete deny out 25` e riprovare: la connessione passa.
+Remove it with `ufw delete deny out 25` and retry: the connection goes through.
 
-**12. Profili applicativi**
+**12. Application profiles**
 ```bash
 ufw app list
 ufw app info LabDB
 ufw allow LabWeb
 ```
-(I profili `LabWeb` e `LabDB` sono creati per la demo in `/etc/ufw/applications.d/lab-apps`. Su Ubuntu trovate anche `OpenSSH`, `Nginx Full`, ecc.)
+(The `LabWeb` and `LabDB` profiles are created for the demo in `/etc/ufw/applications.d/lab-apps`. On Ubuntu you will also find `OpenSSH`, `Nginx Full`, etc.)
 
-**13. Eliminare regole**
+**13. Deleting rules**
 ```bash
 ufw status numbered
-ufw delete 2                # per numero
-ufw delete allow 443/tcp    # per regola
+ufw delete 2                # by number
+ufw delete allow 443/tcp    # by rule
 ```
 
-**14. Sotto il cofano: UFW è un front-end di iptables**
+**14. Under the hood: UFW is a front-end for iptables**
 ```bash
 lab-show
 iptables -S | head -40
 ufw show added
 cat /etc/ufw/user.rules
 ```
-Collegamento diretto col laboratorio iptables: stessi `ACCEPT/DROP`, catene `ufw-user-input`, `ufw-before-input`...
+Direct link to the iptables lab: same `ACCEPT/DROP`, `ufw-user-input` chains, `ufw-before-input`...
 
-**15. Disabilitare e resettare**
+**15. Disabling and resetting**
 ```bash
-ufw disable                 # spegne il firewall, le regole restano
-ufw --force reset           # cancella tutto (o: lab-reset)
+ufw disable                 # turns the firewall off, rules are kept
+ufw --force reset           # deletes everything (or: lab-reset)
 ```
 
-## Esercizi per gli studenti
+## Student exercises
 
-1. Configura un server web sicuro: default deny, SSH solo da `172.29.0.21`, HTTP/HTTPS da chiunque.
-2. Consenti MySQL solo dalla subnet `172.29.0.0/24`, ma blocca `172.29.0.22` (attenzione all'ordine!).
-3. Metti `ufw limit ssh` e scopri dopo quante connessioni ravvicinate scatta il blocco (`for i in $(seq 1 8); do nc -zv -w1 172.29.0.10 22; done`).
-4. Blocca l'SMTP in uscita e verifica che le altre connessioni in uscita funzionino ancora.
-5. Ricostruisci la stessa configurazione con `iptables` e confronta il numero di comandi.
+1. Set up a secure web server: default deny, SSH only from `172.29.0.21`, HTTP/HTTPS from anyone.
+2. Allow MySQL only from the `172.29.0.0/24` subnet, but block `172.29.0.22` (watch the order!).
+3. Enable `ufw limit ssh` and find out after how many rapid connections the block kicks in (`for i in $(seq 1 8); do nc -zv -w1 172.29.0.10 22; done`).
+4. Block outgoing SMTP and check that other outgoing connections still work.
+5. Rebuild the same configuration with `iptables` and compare the number of commands.
 
-## Note e troubleshooting
+## Notes and troubleshooting
 
-- Il ping funziona anche con `deny incoming`: è voluto (regole ICMP in `before.rules`). Per bloccarlo si modifica quel file, non basta una `ufw deny`.
-- IPv6 è disattivato nel container (`IPV6=no` in `/etc/default/ufw`): in una macchina reale UFW applica le regole sia a IPv4 che a IPv6 e vedrai le righe `(v6)`.
-- **Logging**: `ufw logging on` funziona, ma il log del kernel è condiviso con l'host e non c'è `/var/log/ufw.log` nel container. Su Linux: `dmesg -w | grep UFW` **sull'host**.
-- **Docker e UFW**: Docker scrive direttamente in iptables e può aggirare le regole UFW per le porte pubblicate. Qui non succede perché nessuna porta è pubblicata sull'host, ma vale la pena citarlo agli studenti.
-- Se `ufw enable` dà errori sul backend: `update-alternatives --set iptables /usr/sbin/iptables-legacy` nel server.
-- `root` / `student` per SSH: **solo per il laboratorio**, rete isolata.
+- Ping works even with `deny incoming`: this is intended (ICMP rules in `before.rules`). To block it you edit that file; a `ufw deny` is not enough.
+- IPv6 is disabled in the container (`IPV6=no` in `/etc/default/ufw`): on a real machine UFW applies rules to both IPv4 and IPv6 and you will see `(v6)` lines.
+- **Logging**: `ufw logging on` works, but the kernel log is shared with the host and there is no `/var/log/ufw.log` in the container. On Linux: `dmesg -w | grep UFW` **on the host**.
+- **Docker and UFW**: Docker writes directly to iptables and can bypass UFW rules for published ports. This does not happen here because no ports are published on the host, but it is worth mentioning to students.
+- If `ufw enable` gives backend errors: `update-alternatives --set iptables /usr/sbin/iptables-legacy` on the server.
+- `root` / `student` for SSH: **lab use only**, isolated network.
