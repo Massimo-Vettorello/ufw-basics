@@ -1,0 +1,9 @@
+[LabWeb]
+title=Web del laboratorio
+description=Server HTTP della demo
+ports=80/tcp
+
+[LabDB]
+title=Database del laboratorio
+description=Finti MySQL e PostgreSQL
+ports=3306,5432/tcp

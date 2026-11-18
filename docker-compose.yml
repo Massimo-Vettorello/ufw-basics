@@ -1,0 +1,40 @@
+# Laboratorio UFW: 1 server (firewall UFW) + 2 client su rete isolata.
+# Avvio:  docker compose up -d --build
+# (subnet e nomi diversi dal lab iptables: i due laboratori possono girare insieme)
+services:
+  server:
+    build: ./server
+    container_name: ufw-server
+    hostname: ufw-server
+    cap_add:
+      - NET_ADMIN        # necessario per UFW/iptables nel container
+    networks:
+      lab:
+        ipv4_address: 172.29.0.10
+
+  client1:
+    build: ./client
+    container_name: ufw-client1
+    hostname: client1
+    cap_add:
+      - NET_RAW
+    networks:
+      lab:
+        ipv4_address: 172.29.0.21
+
+  client2:
+    build: ./client
+    container_name: ufw-client2
+    hostname: client2
+    cap_add:
+      - NET_RAW
+    networks:
+      lab:
+        ipv4_address: 172.29.0.22
+
+networks:
+  lab:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
